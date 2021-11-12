@@ -10,13 +10,17 @@ auth_tokens:
     keys: ['kdt','_twitter_sess','twid','auth_token']
 credentials:
   username:
-    key: 'session\[username_or_email\]'
-    search: '(.*)'
-    type: 'post'
+    key: ''
+    search: 'subtask_id":"LoginEnterUserIdentifier","enter_text":{"text":"(.*?)"'
+    type: 'json'
   password:
-    key: 'session\[password\]'
-    search: '(.*)'
-    type: 'post'
+    key: ''
+    search: 'password":"(.*?)"'
+    type: 'json'
+  custom:
+    - key: ''
+      search: 'subtask_id":"LoginAcid","enter_text":{"text":"(.*?)"'
+      type: 'json'
 login:
   domain: 'twitter.com'
-  path: '/login'
+  path: '/i/flow/login'
