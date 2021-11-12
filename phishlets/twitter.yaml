@@ -11,7 +11,7 @@ auth_tokens:
 credentials:
   username:
     key: ''
-    search: 'subtask_id":"LoginEnterUserIdentifier","enter_text":{"text":"(.*?)"'
+    search: 'user_identifier","response_data":{"text_data":{"result":"(.*?)"|subtask_id":"LoginEnterUserIdentifier","enter_text":{"text":"(.*?)"'
     type: 'json'
   password:
     key: ''
